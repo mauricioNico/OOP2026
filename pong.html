@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pong en HTML y JavaScript</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 14px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      letter-spacing: 1px;
+    }
+
+    .info {
+      text-align: center;
+      line-height: 1.5;
+      color: #ddd;
+    }
+
+    canvas {
+      background: #000;
+      border: 3px solid #fff;
+      max-width: 95vw;
+      height: auto;
+    }
+
+    .controles {
+      font-size: 0.95rem;
+      color: #ccc;
+      text-align: center;
+    }
+
+    .boton {
+      background: #fff;
+      color: #000;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .boton:hover {
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pong</h1>
+  <div class="info">
+    <p>Jugador izquierda: <strong>W</strong> y <strong>S</strong></p>
+    <p>Jugador derecha: <strong>↑</strong> y <strong>↓</strong></p>
+    <p>Presioná <strong>Espacio</strong> para pausar o reanudar</p>
+  </div>
+
+  <canvas id="juego" width="900" height="500"></canvas>
+  <button class="boton" id="reiniciar">Reiniciar partida</button>
+
+  <div class="controles">
+    Gana quien llegue primero a 5 puntos.
+  </div>
+
+  <script>
+    const canvas = document.getElementById('juego');
+    const ctx = canvas.getContext('2d');
+    const botonReiniciar = document.getElementById('reiniciar');
+
+    const ANCHO = canvas.width;
+    const ALTO = canvas.height;
+    const PUNTOS_GANAR = 5;
+
+    const paleta = {
+      ancho: 14,
+      alto: 100,
+      velocidad: 7
+    };
+
+    const pelota = {
+      x: ANCHO / 2,
+      y: ALTO / 2,
+      radio: 10,
+      velocidadX: 5,
+      velocidadY: 4,
+      velocidadMax: 10
+    };
+
+    const jugador1 = {
+      x: 25,
+      y: ALTO / 2 - paleta.alto / 2,
+      ancho: paleta.ancho,
+      alto: paleta.alto,
+      puntos: 0,
+      arriba: false,
+      abajo: false
+    };
+
+    const jugador2 = {
+      x: ANCHO - 25 - paleta.ancho,
+      y: ALTO / 2 - paleta.alto / 2,
+      ancho: paleta.ancho,
+      alto: paleta.alto,
+      puntos: 0,
+      arriba: false,
+      abajo: false
+    };
+
+    let pausado = false;
+    let terminado = false;
+    let mensaje = '';
+
+    function dibujarRectangulo(x, y, ancho, alto, color = 'white') {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, ancho, alto);
+    }
+
+    function dibujarCirculo(x, y, radio, color = 'white') {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, radio, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function dibujarTexto(texto, x, y, tam = '40px', alineacion = 'center') {
+      ctx.fillStyle = 'white';
+      ctx.font = `${tam} Arial`;
+      ctx.textAlign = alineacion;
+      ctx.fillText(texto, x, y);
+    }
+
+    function dibujarLineaCentral() {
+      const segmentoAlto = 22;
+      const separacion = 14;
+      for (let y = 0; y < ALTO; y += segmentoAlto + separacion) {
+        dibujarRectangulo(ANCHO / 2 - 2, y, 4, segmentoAlto, '#777');
+      }
+    }
+
+    function limitarPaleta(jugador) {
+      if (jugador.y < 0) jugador.y = 0;
+      if (jugador.y + jugador.alto > ALTO) jugador.y = ALTO - jugador.alto;
+    }
+
+    function moverPaletas() {
+      if (jugador1.arriba) jugador1.y -= paleta.velocidad;
+      if (jugador1.abajo) jugador1.y += paleta.velocidad;
+      if (jugador2.arriba) jugador2.y -= paleta.velocidad;
+      if (jugador2.abajo) jugador2.y += paleta.velocidad;
+
+      limitarPaleta(jugador1);
+      limitarPaleta(jugador2);
+    }
+
+    function reiniciarPelota(direccion = 1) {
+      pelota.x = ANCHO / 2;
+      pelota.y = ALTO / 2;
+      pelota.velocidadX = 5 * direccion;
+      pelota.velocidadY = (Math.random() > 0.5 ? 1 : -1) * (3 + Math.random() * 2);
+    }
+
+    function detectarColision(p, j) {
+      return (
+        p.x - p.radio < j.x + j.ancho &&
+        p.x + p.radio > j.x &&
+        p.y - p.radio < j.y + j.alto &&
+        p.y + p.radio > j.y
+      );
+    }
+
+    function actualizarPelota() {
+      pelota.x += pelota.velocidadX;
+      pelota.y += pelota.velocidadY;
+
+      if (pelota.y - pelota.radio <= 0 || pelota.y + pelota.radio >= ALTO) {
+        pelota.velocidadY *= -1;
+      }
+
+      if (detectarColision(pelota, jugador1) && pelota.velocidadX < 0) {
+        const puntoImpacto = pelota.y - (jugador1.y + jugador1.alto / 2);
+        const normalizado = puntoImpacto / (jugador1.alto / 2);
+        pelota.velocidadX = Math.min(Math.abs(pelota.velocidadX) + 0.4, pelota.velocidadMax);
+        pelota.velocidadY = normalizado * 6;
+      }
+
+      if (detectarColision(pelota, jugador2) && pelota.velocidadX > 0) {
+        const puntoImpacto = pelota.y - (jugador2.y + jugador2.alto / 2);
+        const normalizado = puntoImpacto / (jugador2.alto / 2);
+        pelota.velocidadX = -Math.min(Math.abs(pelota.velocidadX) + 0.4, pelota.velocidadMax);
+        pelota.velocidadY = normalizado * 6;
+      }
+
+      if (pelota.x + pelota.radio < 0) {
+        jugador2.puntos++;
+        verificarGanador();
+        if (!terminado) reiniciarPelota(-1);
+      }
+
+      if (pelota.x - pelota.radio > ANCHO) {
+        jugador1.puntos++;
+        verificarGanador();
+        if (!terminado) reiniciarPelota(1);
+      }
+    }
+
+    function verificarGanador() {
+      if (jugador1.puntos >= PUNTOS_GANAR) {
+        terminado = true;
+        mensaje = '¡Gana el Jugador Izquierdo!';
+      } else if (jugador2.puntos >= PUNTOS_GANAR) {
+        terminado = true;
+        mensaje = '¡Gana el Jugador Derecho!';
+      }
+    }
+
+    function dibujar() {
+      dibujarRectangulo(0, 0, ANCHO, ALTO, 'black');
+      dibujarLineaCentral();
+
+      dibujarTexto(jugador1.puntos, ANCHO * 0.25, 60);
+      dibujarTexto(jugador2.puntos, ANCHO * 0.75, 60);
+
+      dibujarRectangulo(jugador1.x, jugador1.y, jugador1.ancho, jugador1.alto);
+      dibujarRectangulo(jugador2.x, jugador2.y, jugador2.ancho, jugador2.alto);
+      dibujarCirculo(pelota.x, pelota.y, pelota.radio);
+
+      if (pausado && !terminado) {
+        dibujarTexto('PAUSA', ANCHO / 2, ALTO / 2, '50px');
+      }
+
+      if (terminado) {
+        dibujarTexto(mensaje, ANCHO / 2, ALTO / 2 - 10, '34px');
+        dibujarTexto('Presioná Reiniciar para volver a jugar', ANCHO / 2, ALTO / 2 + 35, '22px');
+      }
+    }
+
+    function actualizar() {
+      if (!pausado && !terminado) {
+        moverPaletas();
+        actualizarPelota();
+      }
+    }
+
+    function bucleJuego() {
+      actualizar();
+      dibujar();
+      requestAnimationFrame(bucleJuego);
+    }
+
+    function reiniciarPartida() {
+      jugador1.puntos = 0;
+      jugador2.puntos = 0;
+      jugador1.y = ALTO / 2 - paleta.alto / 2;
+      jugador2.y = ALTO / 2 - paleta.alto / 2;
+      pausado = false;
+      terminado = false;
+      mensaje = '';
+      reiniciarPelota(Math.random() > 0.5 ? 1 : -1);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      const tecla = e.key;
+
+      if (tecla === 'w' || tecla === 'W') jugador1.arriba = true;
+      if (tecla === 's' || tecla === 'S') jugador1.abajo = true;
+      if (tecla === 'ArrowUp') jugador2.arriba = true;
+      if (tecla === 'ArrowDown') jugador2.abajo = true;
+
+      if (tecla === ' ') {
+        e.preventDefault();
+        if (!terminado) pausado = !pausado;
+      }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      const tecla = e.key;
+
+      if (tecla === 'w' || tecla === 'W') jugador1.arriba = false;
+      if (tecla === 's' || tecla === 'S') jugador1.abajo = false;
+      if (tecla === 'ArrowUp') jugador2.arriba = false;
+      if (tecla === 'ArrowDown') jugador2.abajo = false;
+    });
+
+    botonReiniciar.addEventListener('click', reiniciarPartida);
+
+    reiniciarPelota(Math.random() > 0.5 ? 1 : -1);
+    bucleJuego();
+  </script>
+</body>
+</html>
